@@ -1,0 +1,206 @@
+{
+  "workflow_repair": {
+    "path": "/app/workflow/develop_reserves.py",
+    "cli_usage": "python3 /app/workflow/develop_reserves.py --input PATH --output-dir PATH",
+    "defaults": {
+      "input": "/app/data/development_triangle.json",
+      "output_dir": "/app/output",
+      "period_calendar": "/app/data/period_calendar.json",
+      "reserving_policy": "/app/data/reserving_policy.json"
+    },
+    "prohibited_imports": [
+      "pandas",
+      "numpy",
+      "duckdb"
+    ]
+  },
+  "output_files": {
+    "summary_json": "summary.json",
+    "line_development_json": "line_development.json",
+    "reserve_queue_jsonl": "reserve_queue.jsonl",
+    "additional_files_allowed": false
+  },
+  "field_types": {
+    "amount_cents": {
+      "type": "integer",
+      "unit": "minor currency units",
+      "input_coercion": "int(str(value).strip()); on failure int(float(str(value).strip())); on failure 0"
+    },
+    "basis_points": {
+      "type": "integer",
+      "unit": "one ten-thousandth",
+      "par_value": 10000
+    },
+    "dev_lag": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "movement_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "line": {
+      "type": "string"
+    },
+    "accident_period": {
+      "type": "string"
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "escalate",
+        "review",
+        "watch"
+      ]
+    },
+    "tier_counts": {
+      "type": "object",
+      "keys": [
+        "escalate",
+        "review",
+        "watch"
+      ]
+    },
+    "claim_count": {
+      "type": "integer"
+    },
+    "largest_claim_share_bp": {
+      "type": "integer"
+    }
+  },
+  "triangle_source": {
+    "path": "/app/data/development_triangle.json",
+    "container": "object keyed by line of business, each value an object keyed by accident period, each of those an array of development-lag cells",
+    "line_key_sort": "ascending",
+    "accident_period_key_sort": "ascending",
+    "item_sort": "dev_lag ascending",
+    "required_fields": [
+      "dev_lag",
+      "cumulative_paid_cents",
+      "cumulative_incurred_cents",
+      "movement_count"
+    ]
+  },
+  "movements_source": {
+    "path": "/app/data/claim_movements.json",
+    "container": "array of movement objects",
+    "required_fields": [
+      "movement_id",
+      "claim_ref",
+      "line",
+      "accident_period",
+      "booking_period",
+      "movement_type",
+      "amount_cents",
+      "posted_seq",
+      "status",
+      "note"
+    ],
+    "movement_type_enum": [
+      "payment",
+      "alae_expense",
+      "salvage_recovery",
+      "subrogation_recovery",
+      "case_reserve_change"
+    ],
+    "status_enum": [
+      "posted",
+      "voided"
+    ]
+  },
+  "calendar_source": {
+    "path": "/app/data/period_calendar.json",
+    "shape": "{\"periods\": [str, ...], \"valuation_period\": str, \"lines\": [str, ...], \"earned_premium_cents\": {line: {accident_period: int}}}"
+  },
+  "policy_source": {
+    "path": "/app/data/reserving_policy.json",
+    "shape": "{\"default\": {field: int, ...}, \"line_overrides\": {line: {field: int, ...}, ...}}"
+  },
+  "line_development_json": {
+    "output_path": "line_development.json",
+    "container": "object keyed by line of business, each value the array of that line's accident-period rows",
+    "key_sort": "ascending",
+    "item_sort": "accident_period ascending",
+    "required_fields": [
+      "accident_period",
+      "latest_dev_lag",
+      "latest_cumulative_paid_cents",
+      "latest_cumulative_incurred_cents",
+      "movement_count",
+      "selected_factor_bp",
+      "tail_factor_bp",
+      "cdf_bp",
+      "earned_premium_cents",
+      "a_priori_loss_cents",
+      "pct_unreported_bp",
+      "ultimate_chain_ladder_cents",
+      "ultimate_bornhuetter_ferguson_cents",
+      "credibility_bp",
+      "ultimate_blended_cents",
+      "reserve_cents",
+      "ibnr_cents",
+      "claim_count",
+      "largest_claim_share_bp"
+    ]
+  },
+  "reserve_queue": {
+    "output_path": "reserve_queue.jsonl",
+    "container": "one compact JSON object per line, json.dumps(..., separators=(',', ':'))",
+    "cohort_id_format": "{line}:{accident_period}@{latest_dev_lag}",
+    "required_fields": [
+      "cohort_id",
+      "line",
+      "accident_period",
+      "latest_dev_lag",
+      "latest_cumulative_paid_cents",
+      "latest_cumulative_incurred_cents",
+      "movement_count",
+      "selected_factor_bp",
+      "tail_factor_bp",
+      "cdf_bp",
+      "earned_premium_cents",
+      "a_priori_loss_cents",
+      "pct_unreported_bp",
+      "ultimate_chain_ladder_cents",
+      "ultimate_bornhuetter_ferguson_cents",
+      "credibility_bp",
+      "ultimate_blended_cents",
+      "reserve_cents",
+      "ibnr_cents",
+      "tier",
+      "claim_count",
+      "largest_claim_share_bp"
+    ]
+  },
+  "summary_json": {
+    "output_path": "summary.json",
+    "container": "object",
+    "schema_version": "reserve-triangle-v1",
+    "required_fields": [
+      "schema_version",
+      "valuation_period",
+      "line_count",
+      "cohort_count",
+      "triangle_cell_count",
+      "triangle_movement_count",
+      "tier_counts",
+      "total_latest_paid_cents",
+      "total_latest_incurred_cents",
+      "total_ultimate_cents",
+      "total_reserve_cents",
+      "total_ibnr_cents",
+      "largest_cdf_bp",
+      "queued_cohort_count",
+      "max_reserve_cents",
+      "max_ibnr_cents",
+      "max_credibility_bp",
+      "max_largest_claim_share_bp"
+    ],
+    "tier_counts_key_order": [
+      "escalate",
+      "review",
+      "watch"
+    ]
+  },
+  "runtime_budget_seconds": 120
+}

@@ -1,0 +1,17 @@
+.git
+.gitignore
+**/*.zip
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/node_modules/
+# Verifier and reference material must never reach the agent image.
+tests/
+solution/
+# Local secrets and environment overrides.
+.env
+.env.*
+*.pem
+*.key
