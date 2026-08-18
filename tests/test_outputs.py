@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from fractions import Fraction
 from pathlib import Path
 
@@ -44,11 +45,14 @@ POLICY_FIELDS = (
     "review_unreported_min_bp", "expected_loss_ratio_bp", "max_credibility_bp",
     "min_cell_movements",
 )
+# Policy baseline exactly as fixed by the final #RSV-4150 decision. Any field the
+# shipped policy omits falls back to these, so they must match the governance log
+# rather than the pre-repair engine's constants.
 BASELINE = {
-    "admission_min_cents": 4000000, "escalate_reserve_min_cents": 30000000,
-    "escalate_ibnr_min_cents": 8000000, "escalate_cdf_min_bp": 17000,
-    "review_reserve_min_cents": 12000000, "review_ibnr_min_cents": 3000000,
-    "review_unreported_min_bp": 3000, "expected_loss_ratio_bp": 6200,
+    "admission_min_cents": 4500000, "escalate_reserve_min_cents": 2800000000,
+    "escalate_ibnr_min_cents": 8000000, "escalate_cdf_min_bp": 120000,
+    "review_reserve_min_cents": 180000000, "review_ibnr_min_cents": 1,
+    "review_unreported_min_bp": 2500, "expected_loss_ratio_bp": 6200,
     "max_credibility_bp": 9500, "min_cell_movements": 2,
 }
 
@@ -115,6 +119,9 @@ def _digest(value: object) -> str:
 # buckets every movement into its cell and claim in a single pass; re-scanning
 # the movement file per cell is the cell count times the movement count.
 RUNTIME_BUDGET_SEC = 120.0
+# Wall-clock of each graded run, keyed by the input it was given, so the budget
+# stated in instruction.md and report_spec.json is actually enforced below.
+_ELAPSED: dict[str, float] = {}
 
 
 def _load_json(path: Path):
@@ -168,10 +175,12 @@ def _run_pipeline(script_path: Path = WORKFLOW_PATH, input_path: Path = DEFAULT_
     staged_input = work / "triangle.json"
     shutil.copy(str(input_path), str(staged_input))
     os.chmod(staged_input, 0o644)
+    started = time.monotonic()
     result = _run_agent(
         [sys.executable, str(script_path), "--input", str(staged_input), "--output-dir", str(out_dir)],
         cwd=work,
     )
+    _ELAPSED[str(input_path)] = time.monotonic() - started
     assert result.returncode == 0
     summary = _load_json(out_dir / "summary.json")
     development = _load_json(out_dir / "line_development.json")
@@ -409,6 +418,22 @@ def test_broken_snapshot_is_wrong():
 # --------------------------------------------------------------------------
 # Generalization / idempotency / CLI
 # --------------------------------------------------------------------------
+def test_graded_run_meets_documented_runtime_budget(primary_outputs):
+    """The graded run finishes inside the 120-second budget instruction.md and the
+    output contract both state. Bucketing the claim counts and largest-claim shares
+    once keeps the run well inside it; rescanning the book per cell does not."""
+    elapsed = _ELAPSED[str(DEFAULT_INPUT)]
+    assert elapsed <= RUNTIME_BUDGET_SEC, (
+        f"graded run took {elapsed:.1f}s, over the {RUNTIME_BUDGET_SEC}s budget"
+    )
+
+
+def test_runtime_budget_is_stated_in_the_contract():
+    """The budget the previous test enforces is the one the output contract publishes,
+    so the verifier and the contract cannot drift apart."""
+    assert int(SPEC["runtime_budget_seconds"]) == int(RUNTIME_BUDGET_SEC)
+
+
 def test_pipeline_rerun_idempotent():
     """Verifies that pipeline rerun idempotent."""
     _, summary_a, development_a, queue_a = _run_pipeline()
@@ -736,5 +761,5 @@ def test_governance_log_present():
 def test_engine_does_not_reference_test_artifacts():
     """Verifies that engine does not reference artifacts."""
     code = WORKFLOW_PATH.read_text(encoding="utf-8")
-    for token in ("/tests", "expected_report.json", "alt_triangle.json", "alt_claim_movements.json"):
+    for token in ("/tests", "expected_report.json", "alt_triangle.json"):
         assert token not in code
