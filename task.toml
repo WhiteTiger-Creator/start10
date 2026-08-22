@@ -12,7 +12,7 @@ the movement count and cannot meet the 120-second wall-clock budget the contract
 
 Restoring this valuation is the work of an actuarial reserving analyst closing a year-end loss
 development study, and it is a genuinely dependent chain rather than a single repair. The year-end
-rebuild of the cumulative development triangle was abandoned after its first column, so the first
+rebuild of the cumulative development triangle was abandoned and its file cleared, so the first
 step is to aggregate /app/data/claim_movements.json into /app/data/development_triangle.json under
 the committee's final decision -- which movement types net into paid, that recoveries are already
 filed as negative amounts, that a blank accident period is taken from the claim's other movements

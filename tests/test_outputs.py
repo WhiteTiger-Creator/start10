@@ -27,6 +27,9 @@ CALENDAR_PATH = Path("/app/data/period_calendar.json")
 SHIPPED_TRIANGLE_REFERENCE_PATH = Path("/tests/fixtures/shipped_triangle.json")
 POLICY_PATH = Path("/app/data/reserving_policy.json")
 SPEC_PATH = Path("/app/docs/report_spec.json")
+# The contract is golden metadata: the verifier reads it from its own image,
+# never from the agent-writable copy under /app.
+GOLDEN_CONTRACT_PATH = Path("/tests/fixtures/contract_golden.json")
 LOG_PATH = Path("/app/incident/reserving_governance_log.md")
 EXPECTED_FIXTURE = Path("/tests/fixtures/expected_report.json")
 ALT_INPUT = Path("/tests/fixtures/alt_triangle.json")
@@ -37,7 +40,7 @@ ADMITTED_LINES = {"liability", "motor", "property"}
 BP = 10000
 
 FIXTURE = json.loads(EXPECTED_FIXTURE.read_text())
-SPEC = json.loads(SPEC_PATH.read_text())
+SPEC = json.loads(GOLDEN_CONTRACT_PATH.read_text())
 
 POLICY_FIELDS = (
     "admission_min_cents", "escalate_reserve_min_cents", "escalate_ibnr_min_cents",
@@ -246,13 +249,13 @@ def test_shipped_and_wrongly_aggregated_triangles_differ_from_the_rebuild():
     expected = FIXTURE["expected_triangle_digest"]
     assert _digest(_load_json(SHIPPED_TRIANGLE_REFERENCE_PATH)) != expected
     for label, triangle in _variant_triangles().items():
-        assert triangle != expected, label
+        assert _digest(triangle) != expected, label
 
 
 def test_engine_output_depends_on_the_rebuilt_triangle(tmp_path: Path):
     """Even a correctly repaired engine emits wrong artifacts on a wrongly built triangle."""
     variants = dict(_variant_triangles())
-    variants["shipped_partial"] = _load_json(SHIPPED_TRIANGLE_REFERENCE_PATH)
+    variants["shipped_empty"] = _load_json(SHIPPED_TRIANGLE_REFERENCE_PATH)
     for label, triangle in variants.items():
         _, summary, development, queue = _run_on_triangle(tmp_path, label, triangle)
         assert summary != FIXTURE["primary"]["summary"], label
@@ -758,8 +761,12 @@ def test_governance_log_present():
     assert LOG_PATH.exists() and LOG_PATH.stat().st_size > 0
 
 
-def test_engine_does_not_reference_test_artifacts():
-    """Verifies that engine does not reference artifacts."""
-    code = WORKFLOW_PATH.read_text(encoding="utf-8")
-    for token in ("/tests", "expected_report.json", "alt_triangle.json"):
-        assert token not in code
+def test_shipped_contract_matches_the_golden_copy():
+    """The output contract in the environment is unmodified.
+
+    Field lists, container shapes and sort orders are golden metadata and are read
+    from the verifier's own image; this proves the agent's copy still agrees with
+    it, so the contract cannot be trimmed to weaken a schema check.
+    """
+    shipped = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+    assert shipped == json.loads(GOLDEN_CONTRACT_PATH.read_text(encoding="utf-8"))
