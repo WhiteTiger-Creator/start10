@@ -6,11 +6,20 @@ ENV DEBIAN_FRONTEND=noninteractive
 # dependency layers so a change to those never invalidates the WORKDIR layer.
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        tmux \
-        asciinema \
-    && rm -rf /var/lib/apt/lists/*
+# The only step in this build that reaches the network, and a single transient
+# mirror failure was enough to fail an image build and void a grading trial, so
+# the fetch is retried rather than attempted once.
+RUN set -eu; \
+    for attempt in 1 2 3; do \
+        if apt-get update \
+            && apt-get install -y --no-install-recommends tmux asciinema; then \
+            rm -rf /var/lib/apt/lists/*; \
+            exit 0; \
+        fi; \
+        echo "apt attempt ${attempt} failed, retrying" >&2; \
+        sleep 5; \
+    done; \
+    exit 1
 
 # /app/data/development_triangle.json ships with only its first development
 # column, exactly as the abandoned year-end rebuild left it; the incremental

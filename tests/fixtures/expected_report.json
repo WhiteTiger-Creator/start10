@@ -31,6 +31,11 @@
   "broken_engine_sha256": "ea3d7dfbb8513a2bfcff7570bd7b19205a007309b1eaa6575a51324eeabcb76d",
   "calendar_digest": "eeb9b2560071be0909c547f7afca45cfd67fb9a2f61a0373f8dd715844f009ab",
   "expected_triangle_digest": "40a8725df81a2a5d600a29b69edac049709228b4a1cbe8d1a1ce499f6dc1129a",
+  "input_bytes_sha256": {
+    "claim_movements.json": "ee0091ff0ec0d5ba0932d5d2dae0748cf8799612f706533415443020a10fcb9c",
+    "period_calendar.json": "b1cf5bd46d57b0e3adaf66d1f0ffa6d8cbd66d5284277413e7f38f6f90b7e1f9",
+    "reserving_policy.json": "52cc417c8684da4b80f1a5b6afe972e45211a5b032dddb8c80d5d7b5f089fae2"
+  },
   "movements_digest": "3d13a7dec843ce370b95f5f3555286a2425ff339a10185473c0a72d5448b84d5",
   "primary": {
     "development_digest": "8d33537d3bd1287283cc292ba3de4caf213300339d4b1e45429b3441b5a6fa8f",

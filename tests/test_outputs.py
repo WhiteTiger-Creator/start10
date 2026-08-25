@@ -117,6 +117,16 @@ def _digest(value: object) -> str:
     ).hexdigest()
 
 
+def _file_sha256(path: Path) -> str:
+    """Digest of a file's raw bytes.
+
+    instruction.md promises the operational inputs come back *byte*-identical, so
+    a parsed-content comparison is not enough: it would accept a reformat or a key
+    reorder that the sentence rules out.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 # Documented wall-clock budget for one full run on the graded book.
 # instruction.md and report_spec.json state the same number. The reference
 # buckets every movement into its cell and claim in a single pass; re-scanning
@@ -206,7 +216,16 @@ def primary_outputs():
 # Step 1: the cumulative development triangle must be rebuilt in place
 # --------------------------------------------------------------------------
 def test_aggregation_sources_are_intact():
-    """Verifies that aggregation sources are intact."""
+    """The operational inputs a run reads come back byte-identical.
+
+    instruction.md names the movement extract, the period calendar and the
+    reserving policy as files a run must leave alone, so all three are checked,
+    and checked over their raw bytes rather than their parsed content.
+    """
+    assert _file_sha256(MOVEMENTS_PATH) == FIXTURE["input_bytes_sha256"]["claim_movements.json"]
+    assert _file_sha256(CALENDAR_PATH) == FIXTURE["input_bytes_sha256"]["period_calendar.json"]
+    assert _file_sha256(POLICY_PATH) == FIXTURE["input_bytes_sha256"]["reserving_policy.json"]
+    # The parsed digests stay as a second, redundant reading of the same promise.
     assert _digest(_load_json(MOVEMENTS_PATH)) == FIXTURE["movements_digest"]
     assert _digest(_load_json(CALENDAR_PATH)) == FIXTURE["calendar_digest"]
 
@@ -793,5 +812,8 @@ def test_shipped_contract_matches_the_golden_copy():
     from the verifier's own image; this proves the agent's copy still agrees with
     it, so the contract cannot be trimmed to weaken a schema check.
     """
-    shipped = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
-    assert shipped == json.loads(GOLDEN_CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert json.loads(SPEC_PATH.read_text(encoding="utf-8")) == json.loads(
+        GOLDEN_CONTRACT_PATH.read_text(encoding="utf-8"))
+    # instruction.md promises this file comes back byte-identical too, not merely
+    # equal once parsed.
+    assert _file_sha256(SPEC_PATH) == _file_sha256(GOLDEN_CONTRACT_PATH)
