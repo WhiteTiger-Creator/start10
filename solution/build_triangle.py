@@ -34,7 +34,11 @@ def coerce_int(value: object) -> int:
     except ValueError:
         try:
             return int(float(text))
-        except ValueError:
+        except (ValueError, OverflowError):
+            # The contract's fallback is 0 whenever both conversions fail, and the
+            # second one fails two ways: "abc" raises ValueError, while "1e999" and
+            # "inf" parse as floats and raise OverflowError on int(). Catching only
+            # ValueError turned a documented fallback into a crash.
             return 0
 
 

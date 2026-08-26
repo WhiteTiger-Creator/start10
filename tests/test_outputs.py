@@ -207,6 +207,25 @@ def _run_on_triangle(tmp_path: Path, label: str, triangle: dict):
     return _run_pipeline(input_path=staged)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _clear_default_output_dir():
+    """Empty /app/output before anything is graded.
+
+    Every graded run is given an explicit --output-dir under /candidate-work, so
+    nothing here is needed. Left in place, though, the artifacts solve.sh wrote are
+    a correct summary.json, line_development.json and reserve_queue.jsonl sitting
+    readable on disk, and an engine handed a staged triangle could copy them
+    instead of projecting it.
+    """
+    default_out = Path("/app/output")
+    if default_out.exists():
+        for path in sorted(default_out.iterdir()):
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+
+
 @pytest.fixture(scope="session")
 def primary_outputs():
     return _run_pipeline()
@@ -272,7 +291,15 @@ def test_shipped_and_wrongly_aggregated_triangles_differ_from_the_rebuild():
 
 
 def test_engine_output_depends_on_the_rebuilt_triangle(tmp_path: Path):
-    """Even a correctly repaired engine emits wrong artifacts on a wrongly built triangle."""
+    """Even a correctly repaired engine emits wrong artifacts on a wrongly built triangle.
+
+    This is what makes the two steps dependent rather than merely sequential: the
+    engine has to project the triangle it was handed. instruction.md says so in as
+    many words -- the engine neither rebuilds nor rewrites a triangle, and the one
+    replacement under /app/data belongs to the first step -- because an engine that
+    recomputed the triangle from the movements each run would produce the right
+    answer here for the wrong reason and fail this test.
+    """
     variants = dict(_variant_triangles())
     variants["shipped_empty"] = _load_json(SHIPPED_TRIANGLE_REFERENCE_PATH)
     for label, triangle in variants.items():
@@ -494,7 +521,16 @@ def test_cli_defaults_work_and_match_explicit_run():
     # default mode must not be able to leave the other two behind or broken
     assert sorted(q.name for q in default_out.iterdir() if q.is_file()) == [
         "line_development.json", "reserve_queue.jsonl", "summary.json"]
+    _, explicit_summary2, explicit_development, explicit_queue = _run_pipeline()
+    assert explicit_summary2 == explicit_summary
     assert _load_json(default_out / "summary.json") == explicit_summary
+    # The comment above promised all three; only the summary was actually compared,
+    # so a run that special-cased its default mode could emit anything at all in the
+    # other two files and pass.
+    assert _digest(_load_json(default_out / "line_development.json")) == _digest(
+        explicit_development)
+    assert _digest(_load_jsonl(default_out / "reserve_queue.jsonl")) == _digest(
+        explicit_queue)
 
 
 def test_submitted_program_runs_unprivileged_and_cannot_write_reward():
@@ -752,7 +788,15 @@ def test_selection_deviates_from_the_volume_weighted_chain_ladder(tmp_path: Path
     assert volume_weighted == 16667 and all_year_average == 16667
     assert governed == 16000
     assert green["selected_factor_bp"] == governed
-    assert green["cdf_bp"] == governed
+    # #RSV-4114 chains the selected factor of every transition from this lag through
+    # the last observed one and THEN the tail, reducing to whole basis points at each
+    # step. This cohort sits at lag 0 of a two-lag triangle, so exactly one transition
+    # remains -- but the tail still applies. Asserting cdf_bp == the selected factor
+    # would silently require a unit tail, which the log does not promise for a
+    # triangle this sparse, and would fail an engine that derived a different one.
+    expected_cdf = -(-(governed * green["tail_factor_bp"]) // BP)
+    assert green["cdf_bp"] == expected_cdf, (
+        green["cdf_bp"], governed, green["tail_factor_bp"])
     assert green["selected_factor_bp"] != volume_weighted
 
 
