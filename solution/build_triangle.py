@@ -24,9 +24,11 @@ INCURRED_ONLY_TYPES = ("case_reserve_change",)
 
 
 def coerce_int(value: object) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
+    # report_spec.json states the conversion as int(str(value).strip()), so a
+    # boolean goes through str() like anything else: "True" is not a number and
+    # falls to the zero the contract names, rather than to the 1 it is worth in
+    # Python arithmetic.
+    if isinstance(value, int) and not isinstance(value, bool):
         return value
     text = str(value).strip()
     try:

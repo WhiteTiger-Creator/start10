@@ -132,9 +132,11 @@ def _file_sha256(path: Path) -> str:
 # buckets every movement into its cell and claim in a single pass; re-scanning
 # the movement file per cell is the cell count times the movement count.
 RUNTIME_BUDGET_SEC = 120.0
-# Wall-clock of each graded run, keyed by the input it was given, so the budget
-# stated in instruction.md and report_spec.json is actually enforced below.
-_ELAPSED: dict[str, float] = {}
+# Wall-clock of each graded run, keyed by the PROGRAM and the input it was given.
+# Keying on the input alone let a later test that runs a different program over the
+# same default input overwrite the graded run's timing, so a slow submission was
+# measured by the frozen original's clock instead of its own.
+_ELAPSED: dict[tuple[str, str], float] = {}
 
 
 def _load_json(path: Path):
@@ -162,7 +164,10 @@ _SETPRIV = ["setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", "--no
 # The submitted program gets a minimal explicit environment rather than inheriting the
 # verifier's (PATH/PYTHONPATH/CI variables and any other grader context).
 _CANDIDATE_ENV = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/candidate-work", "LANG": "C.UTF-8"}
-_CANDIDATE_TIMEOUT = 300
+# The budget is enforced by killing the run, not by timing it afterwards: a run
+# that overruns never returns a result to grade. RUNTIME_BUDGET_SEC is defined
+# below and this is asserted equal to it, so the two cannot drift apart.
+_CANDIDATE_TIMEOUT = 120
 
 
 def _candidate_dir() -> Path:
@@ -193,7 +198,7 @@ def _run_pipeline(script_path: Path = WORKFLOW_PATH, input_path: Path = DEFAULT_
         [sys.executable, str(script_path), "--input", str(staged_input), "--output-dir", str(out_dir)],
         cwd=work,
     )
-    _ELAPSED[str(input_path)] = time.monotonic() - started
+    _ELAPSED[(str(script_path), str(input_path))] = time.monotonic() - started
     assert result.returncode == 0
     summary = _load_json(out_dir / "summary.json")
     development = _load_json(out_dir / "line_development.json")
@@ -480,10 +485,16 @@ def test_graded_run_meets_documented_runtime_budget(primary_outputs):
     """The graded run finishes inside the 120-second budget instruction.md and the
     output contract both state. Bucketing the claim counts and largest-claim shares
     once keeps the run well inside it; rescanning the book per cell does not."""
-    elapsed = _ELAPSED[str(DEFAULT_INPUT)]
+    # Enforced twice over. Every candidate run is executed with the published
+    # budget as a hard timeout, so a run that overruns is killed and its test
+    # fails rather than being measured after the fact...
+    assert _CANDIDATE_TIMEOUT == int(RUNTIME_BUDGET_SEC)
+    # ...and the graded run's own wall-clock, under its own key, is checked here.
+    elapsed = _ELAPSED[(str(WORKFLOW_PATH), str(DEFAULT_INPUT))]
     assert elapsed <= RUNTIME_BUDGET_SEC, (
         f"graded run took {elapsed:.1f}s, over the {RUNTIME_BUDGET_SEC}s budget"
     )
+    assert primary_outputs[1]["total_reserve_cents"] != 0, "the graded run produced nothing"
 
 
 def test_runtime_budget_is_stated_in_the_contract():
@@ -800,6 +811,54 @@ def test_selection_deviates_from_the_volume_weighted_chain_ladder(tmp_path: Path
     assert green["selected_factor_bp"] != volume_weighted
 
 
+def test_the_tail_comes_from_the_last_observed_transition(tmp_path: Path):
+    """#RSV-4112 names the highest lag a factor is SELECTED at, not the last on the calendar.
+
+    The staged triangle stops at lag 1, so every later transition the valuation
+    calendar reaches has no ratios and selects nothing. An engine that treated
+    those as selected unit factors would take its tail from an unobserved
+    transition and report a unit tail, carrying none of the development the book
+    actually showed.
+    """
+    _, _, development, _ = _run_on_triangle(tmp_path, "tail", _staged_triangle(STAGED_PAIRS))
+    green = [row for row in development["motor"] if row["latest_dev_lag"] == 0][-1]
+    selected = green["selected_factor_bp"]
+    assert selected == 16000, selected
+    # half of the development still showing at that transition, floored, never below par
+    assert green["tail_factor_bp"] == BP + (selected - BP) // 2, green["tail_factor_bp"]
+    assert green["tail_factor_bp"] > BP, "the tail was taken from a transition nothing observed"
+
+
+def test_a_boolean_figure_is_worth_nothing(tmp_path: Path):
+    """report_spec.json converts a cents figure through int(str(value).strip()).
+
+    "True" is not a number and falls to the zero the contract names on failure.
+    Read as the 1 it is worth in Python arithmetic, a boolean paid figure turns an
+    immature cell into a developing one and moves the selected factor with it.
+    The engine is exercised as a subprocess like every other graded run; nothing
+    here imports the submitted module.
+    """
+    pairs = list(STAGED_PAIRS)
+    triangle = _staged_triangle(pairs)
+    periods = _load_json(CALENDAR_PATH)["periods"]
+    # the earlier cell of the oldest period reads as a boolean: nil paid, so
+    # #RSV-4106 forms no ratio there and the highest ratio drops out of the trim
+    triangle["motor"][periods[0]][0]["cumulative_paid_cents"] = True
+    _, _, development, _ = _run_on_triangle(tmp_path, "boolean", triangle)
+    green = [row for row in development["motor"] if row["latest_dev_lag"] == 0][-1]
+
+    ratios = [Fraction(second, first) for first, second in pairs[1:]]
+    surviving = list(ratios)
+    surviving.remove(max(surviving))
+    surviving.remove(min(surviving))
+    kept = surviving[-3:] if len(surviving) >= 3 else surviving
+    expected = _half_up(sum(kept, Fraction(0)) / len(kept))
+    assert green["selected_factor_bp"] == expected, (
+        "a boolean paid figure was read as a number rather than as the contract's zero",
+        green["selected_factor_bp"], expected,
+    )
+
+
 def test_thin_cells_are_excluded_from_selection(tmp_path: Path):
     """A cell below the maturity floor forms no ratio, which moves the selected factor."""
     periods = _load_json(CALENDAR_PATH)["periods"]
@@ -813,6 +872,54 @@ def test_thin_cells_are_excluded_from_selection(tmp_path: Path):
 # --------------------------------------------------------------------------
 # Anti-delegation: static AST ban
 # --------------------------------------------------------------------------
+def _imported_roots(source: str) -> set:
+    """Top-level module names the source imports, read from the parse tree."""
+    roots = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                roots.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            roots.add(node.module.split(".")[0])
+    return roots
+
+
+def test_engine_imports_only_the_standard_library():
+    """instruction.md says standard library only, and the named ban is not that.
+
+    The contract names three dataframe engines for a reason of its own. It says
+    nothing about any other package, which is what "standard library only"
+    actually means, and leaving the rule to the image's package set makes it an
+    accident of the image rather than something the task states and grades.
+    """
+    found = _imported_roots(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    local = {path.stem for path in WORKFLOW_PATH.parent.glob("*.py")}
+    outside = {name for name in found
+               if name not in sys.stdlib_module_names and name not in local}
+    assert not outside, f"the engine imports outside the standard library: {sorted(outside)}"
+
+
+def test_the_standard_library_check_catches_a_third_party_import(tmp_path: Path):
+    """The check above is real: an engine reaching for a package is detected."""
+    shim = tmp_path / "vendored_engine.py"
+    shim.write_text("import json\nimport polars as pl\nfrom scipy import stats\n")
+    found = _imported_roots(shim.read_text())
+    assert {name for name in found if name not in sys.stdlib_module_names} == {"polars", "scipy"}
+
+
+def test_engine_does_not_load_modules_dynamically():
+    """A module loaded at run time is not an import the scan above can see."""
+    source = WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "importlib" not in _imported_roots(source), "the engine imports importlib"
+    called = {node.func.id for node in ast.walk(ast.parse(source))
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    attributes = {node.attr for node in ast.walk(ast.parse(source))
+                  if isinstance(node, ast.Attribute)}
+    banned = {"__import__", "eval", "exec", "compile"}
+    assert not (banned & called), f"the engine loads code at run time: {sorted(banned & called)}"
+    assert "import_module" not in attributes, "the engine loads a module at run time"
+
+
 def test_engine_does_not_import_dataframe_engines():
     """Verifies that engine does not import dataframe engines."""
     tree = ast.parse(WORKFLOW_PATH.read_text(encoding="utf-8"))

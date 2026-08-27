@@ -74,9 +74,11 @@ def canon_name(value: object) -> str:
 
 
 def coerce_int(value: object) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
+    # report_spec.json states the conversion as int(str(value).strip()), so a
+    # boolean goes through str() like anything else: "True" is not a number and
+    # falls to the zero the contract names, rather than to the 1 it is worth in
+    # Python arithmetic.
+    if isinstance(value, int) and not isinstance(value, bool):
         return value
     text = str(value).strip()
     try:
@@ -152,11 +154,20 @@ def tail_factor_bp(last_selected_bp: int) -> int:
     return max(tail, BP)
 
 
-def cumulative_factor_bp(factors_bp: list[int], from_lag: int, tail_bp: int) -> int:
+def cumulative_factor_bp(
+    factors_bp: list[int], from_lag: int, tail_bp: int, last_observed: int
+) -> int:
     """#RSV-4114: chain the remaining selected factors, then the tail, rounding up
-    at every step, in increasing development order."""
+    at every step, in increasing development order.
+
+    The chain runs through the FINAL OBSERVED transition, which is the highest lag
+    a factor was actually selected at -- not the last calendar transition the
+    horizon happens to reach. On a triangle whose later lags carry no ratios the
+    two differ, and running the chain to the horizon quietly appends transitions
+    the book never observed.
+    """
     cdf = BP
-    for lag in range(from_lag, len(factors_bp)):
+    for lag in range(from_lag, last_observed + 1):
         cdf = ceil_div(cdf * factors_bp[lag], BP)
     return ceil_div(cdf * tail_bp, BP)
 
@@ -302,11 +313,17 @@ def develop_line(line: str, per_line: dict, calendar: dict, policy: dict,
                 "movement_count": coerce_int(row["movement_count"]),
             }
 
-    factors_bp = [
-        select_factor_bp(individual_ratios(cells, periods, lag, policy["min_cell_movements"]))
+    ratio_sets = [
+        individual_ratios(cells, periods, lag, policy["min_cell_movements"])
         for lag in range(horizon - 1)
     ]
-    tail_bp = tail_factor_bp(factors_bp[-1] if factors_bp else BP)
+    factors_bp = [select_factor_bp(ratios) for ratios in ratio_sets]
+    # #RSV-4112 derives the tail from "the selected factor at the highest lag for
+    # which a factor is selected". A transition with no eligible ratios selects
+    # nothing, so it is not that lag however far the calendar runs past it.
+    observed = [lag for lag, ratios in enumerate(ratio_sets) if ratios]
+    last_observed = observed[-1] if observed else -1
+    tail_bp = tail_factor_bp(factors_bp[last_observed] if observed else BP)
 
     rows = []
     for accident in sorted(per_line):
@@ -323,7 +340,7 @@ def develop_line(line: str, per_line: dict, calendar: dict, policy: dict,
                 accident,
                 cells[(accident, latest_lag)],
                 latest_lag,
-                cumulative_factor_bp(factors_bp, latest_lag, tail_bp),
+                cumulative_factor_bp(factors_bp, latest_lag, tail_bp, last_observed),
                 tail_bp,
                 selected_bp,
                 coerce_int(premiums.get(accident, 0)),
