@@ -8,6 +8,7 @@ import itertools
 import json
 import os
 import shutil
+import tempfile
 import subprocess
 import sys
 import time
@@ -144,7 +145,21 @@ def _load_json(path: Path):
 
 
 def _load_jsonl(path: Path):
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    """Read a contracted JSONL artifact, taking every line as written.
+
+    Skipping blank lines here softened a contract that says one compact object
+    per line: a run that padded its output with empty lines read back the same
+    as a clean one and scored full marks. A blank line is a malformed line and
+    is read as one.
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    if not text:
+        return []
+    assert text.endswith("\n"), f"{Path(path).name} has no trailing newline"
+    lines = text.split("\n")[:-1]
+    for number, line in enumerate(lines, start=1):
+        assert line.strip(), f"{Path(path).name} line {number} is blank"
+    return [json.loads(line) for line in lines]
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -171,8 +186,17 @@ _CANDIDATE_TIMEOUT = 120
 
 
 def _candidate_dir() -> Path:
-    directory = _CWORK / f"run-{next(_run_ctr)}"
-    directory.mkdir(parents=True, exist_ok=True)
+    """A fresh work area for one run, created where nothing can pre-empt it.
+
+    /candidate-work is world-writable, so a predictable name here was an opening:
+    a submission could plant the next `run-N` as a symlink to the sealed fixtures
+    and wait. The root-side mkdir(exist_ok=True) would succeed through the link
+    and the chmod would follow it, since os.chmod resolves symlinks and Linux has
+    no lchmod. mkdtemp closes both halves -- the name is unpredictable and the
+    directory is created fresh or not at all.
+    """
+    directory = Path(tempfile.mkdtemp(prefix=f"run-{next(_run_ctr)}-", dir=str(_CWORK)))
+    assert not directory.is_symlink(), directory
     os.chmod(directory, 0o777)
     return directory
 
@@ -415,8 +439,9 @@ def test_reserve_queue_jsonl_compact(primary_outputs):
     """Verifies that reserve queue jsonl compact."""
     out_dir, _, _, _ = primary_outputs
     for line in (out_dir / "reserve_queue.jsonl").read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
+        # a blank line is not skipped here: the contract says one compact
+        # object per line, so an empty one is a malformed line
+        assert line.strip(), "the queue carries a blank line"
         assert ": " not in line
         assert json.dumps(json.loads(line), separators=(",", ":")) == line
 
@@ -811,22 +836,25 @@ def test_selection_deviates_from_the_volume_weighted_chain_ladder(tmp_path: Path
     assert green["selected_factor_bp"] != volume_weighted
 
 
-def test_the_tail_comes_from_the_last_observed_transition(tmp_path: Path):
-    """#RSV-4112 names the highest lag a factor is SELECTED at, not the last on the calendar.
+def test_the_tail_comes_from_the_last_transition_in_the_horizon(tmp_path: Path):
+    """#RSV-4112 keys the tail to the highest lag a factor is selected at, and #RSV-4104
+    selects par wherever no ratio survives, so every transition the calendar spans counts.
 
-    The staged triangle stops at lag 1, so every later transition the valuation
-    calendar reaches has no ratios and selects nothing. An engine that treated
-    those as selected unit factors would take its tail from an unobserved
-    transition and report a unit tail, carrying none of the development the book
-    actually showed.
+    The staged triangle stops at lag 1 while the calendar runs far past it, so the
+    last transition in the horizon selects par and the tail is par with it. The
+    cohort's own selected factor still comes from the transition it sits on, which
+    is what separates this from an engine that keys the tail to the last
+    transition that happened to carry ratios.
     """
     _, _, development, _ = _run_on_triangle(tmp_path, "tail", _staged_triangle(STAGED_PAIRS))
     green = [row for row in development["motor"] if row["latest_dev_lag"] == 0][-1]
     selected = green["selected_factor_bp"]
     assert selected == 16000, selected
-    # half of the development still showing at that transition, floored, never below par
-    assert green["tail_factor_bp"] == BP + (selected - BP) // 2, green["tail_factor_bp"]
-    assert green["tail_factor_bp"] > BP, "the tail was taken from a transition nothing observed"
+    # the last transition in the horizon carries no surviving ratio, so it selects
+    # par under #RSV-4104 and half of nothing is nothing
+    assert green["tail_factor_bp"] == BP, green["tail_factor_bp"]
+    # and the cohort's cdf is still the chain out of its own lag, not a bare par
+    assert green["cdf_bp"] >= selected, green["cdf_bp"]
 
 
 def test_a_boolean_figure_is_worth_nothing(tmp_path: Path):

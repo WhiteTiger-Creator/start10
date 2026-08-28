@@ -160,11 +160,11 @@ def cumulative_factor_bp(
     """#RSV-4114: chain the remaining selected factors, then the tail, rounding up
     at every step, in increasing development order.
 
-    The chain runs through the FINAL OBSERVED transition, which is the highest lag
-    a factor was actually selected at -- not the last calendar transition the
-    horizon happens to reach. On a triangle whose later lags carry no ratios the
-    two differ, and running the chain to the horizon quietly appends transitions
-    the book never observed.
+    The chain runs from the cohort's lag through the final observed transition.
+    Every transition the horizon spans selects a factor -- 10000 where no ratio
+    survives, per #RSV-4104 -- so the final observed transition is the last one
+    in the horizon, and a stretch of no-development transitions multiplies the
+    chain by 10000 apiece rather than truncating it.
     """
     cdf = BP
     for lag in range(from_lag, last_observed + 1):
@@ -318,12 +318,14 @@ def develop_line(line: str, per_line: dict, calendar: dict, policy: dict,
         for lag in range(horizon - 1)
     ]
     factors_bp = [select_factor_bp(ratios) for ratios in ratio_sets]
-    # #RSV-4112 derives the tail from "the selected factor at the highest lag for
-    # which a factor is selected". A transition with no eligible ratios selects
-    # nothing, so it is not that lag however far the calendar runs past it.
-    observed = [lag for lag, ratios in enumerate(ratio_sets) if ratios]
-    last_observed = observed[-1] if observed else -1
-    tail_bp = tail_factor_bp(factors_bp[last_observed] if observed else BP)
+    # #RSV-4104 closes with "A transition where no ratio survives selects 10000
+    # basis points, i.e. no development", so EVERY transition the calendar spans
+    # has a selected factor and the highest lag for which one is selected is the
+    # last transition in the horizon. This code used to treat a no-ratio
+    # transition as though nothing had been selected there, which moved both the
+    # #RSV-4112 tail and the #RSV-4114 chain endpoint on a sparse triangle.
+    last_observed = len(factors_bp) - 1
+    tail_bp = tail_factor_bp(factors_bp[last_observed] if factors_bp else BP)
 
     rows = []
     for accident in sorted(per_line):

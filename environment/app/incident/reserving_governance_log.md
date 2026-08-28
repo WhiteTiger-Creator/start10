@@ -345,7 +345,7 @@ No reserving convention changed in this note; parameters remain as approved by t
 ### Valuation note 2203 — motor (personal lines) lane
 Reserving analyst logged a routine observation for motor (personal lines) at valuation checkpoint 2203.
 Claims handling audit sampled twelve files; documentation gaps only, no estimate restatements.
-> **Reserving committee decision (2026-05-08 - #RSV-4112)** Adeyemi: tail factor, final: the tail carries HALF of the development still showing at the final observed transition, so tail_factor_bp = 10000 + (the selected factor at the highest lag for which a factor is selected, less 10000) divided by 2, and it is never allowed below 10000. This supersedes the flat 10500 draft #RSV-4012 and revises #RSV-4110. ROUNDING: tail_factor_bp // 2 = FLOOR
+> **Reserving committee decision (2026-05-08 - #RSV-4112)** Adeyemi: tail factor, final: the tail carries HALF of the development still showing at the final observed transition, so tail_factor_bp = 10000 + (the selected factor at the highest lag for which a factor is selected, less 10000) divided by 2, and it is never allowed below 10000. To settle the question Petrova raised: a factor IS selected at every transition the valuation calendar spans, because a transition where no ratio survives selects 10000 under #RSV-4104, so the highest lag for which a factor is selected is simply the last transition in the horizon and NOT the last one that happened to carry surviving ratios. Where a line's late transitions are all par the tail is par with it, and the committee accepts that. This supersedes the flat 10500 draft #RSV-4012 and revises #RSV-4110. ROUNDING: tail_factor_bp // 2 = FLOOR
 Historic spreadsheet workings remain archived and non-authoritative for the JSON valuation.
 
 ### Valuation note 2204 — property (commercial) lane
@@ -361,7 +361,7 @@ Reviewers should reconcile convention questions against #RSV decisions rather th
 ### Valuation note 2206 — travel (affinity) lane
 Reserving analyst logged a routine observation for travel (affinity) at valuation checkpoint 2206.
 Salvage disposal schedule refreshed; proceeds already sit in the movement extract.
-> **Reserving committee decision (2026-05-10 - #RSV-4114)** Adeyemi: cumulative development factor, final: for a cohort sitting at development lag L, start at 10000 basis points, multiply by the selected factor of each transition from L through the final observed transition taking them in INCREASING lag order, then multiply by the tail factor. Each multiplication is reduced back to whole basis points before the next one is applied, so the order of the chain is part of the result. ROUNDING: cdf_bp = CEIL at every step
+> **Reserving committee decision (2026-05-10 - #RSV-4114)** Adeyemi: cumulative development factor, final: for a cohort sitting at development lag L, start at 10000 basis points, multiply by the selected factor of each transition from L through the final observed transition -- which is the last transition the valuation calendar spans, the horizon being set by the valuation period's position and not by whichever lags a given triangle happens to populate -- taking them in INCREASING lag order, then multiply by the tail factor. Each multiplication is reduced back to whole basis points before the next one is applied, so the order of the chain is part of the result. ROUNDING: cdf_bp = CEIL at every step
 No reserving convention changed in this note; parameters remain as approved by the committee.
 
 ### Valuation note 2207 — motor (fleet) lane

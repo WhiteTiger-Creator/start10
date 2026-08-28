@@ -4,79 +4,10 @@ name = "claims-triangle-reserving"
 [metadata]
 author_name = "Jonathan"
 author_email = "jtolbert0175@gmail.com"
-difficulty_explanation = '''
-The graded book carries 175,000 claim movements across eight lines and forty accident periods, and the
-committee's claim-attribution figures need every movement bucketed into its cell and claim. Done in one
-pass a run finishes in about a second; rescanning the movement file for each cell is the cell count times
-the movement count and cannot meet the 120-second wall-clock budget the contract states.
-
-Restoring this valuation is the work of an actuarial reserving analyst closing a year-end loss
-development study, and it is a genuinely dependent chain rather than a single repair. The year-end
-rebuild of the cumulative development triangle was abandoned and its file cleared, so the first
-step is to aggregate /app/data/claim_movements.json into /app/data/development_triangle.json under
-the committee's final decision -- which movement types net into paid, that recoveries are already
-filed as negative amounts, that a blank accident period is taken from the claim's other movements
-rather than from the booking period, that a development lag with no movement carries the previous
-cumulative forward instead of reading zero, and the de-duplication and discard rules around it.
-Every projected ultimate is wrong if that aggregation is wrong, and a superseded draft that posts
-movements by booking period, drops recoveries and zero-fills empty lags is there to be traced past.
-Only then can the analyst reconstruct the development conventions themselves from a long, mostly
-routine committee log rather than a specification: ratio eligibility on the earlier cell, the
-trim-then-latest-three factor selection, the derived tail, the order-sensitive chaining of factors,
-the paid rather than incurred projection base, the expected-loss method on earned premium, the
-maturity-driven credibility blend, the differently floored reserve and incurred-but-not-reported
-figures, admission, tiering and the capacity cap applied after ordering all have to be traced to
-their final dated decision, with each rounding direction fixed independently. Development factors
-multiply forward, so an error at an early lag propagates into every ultimate. All amounts are
-integer minor units and the data is synthetic.
-'''
-solution_explanation = '''
-solution/solve.sh drives the two dependent steps inside the environment container. Step one runs
-solution/build_triangle.py, which implements the committee's final aggregation decision (#RSV-4180):
-keep one movement per movement_id by highest posted_seq then last filed, drop voided rows, resolve a
-blank accident period from the earliest accident period carried by another movement of the same
-claim reference and discard the row when the claim appears nowhere else, take the development lag
-from the booking period, net payments, allocated expense and the negatively filed salvage and
-subrogation recoveries into the paid figure, add case reserve movements only to the incurred figure,
-accumulate each cell as the running sum so an empty lag carries forward, and write the sorted
-triangle to /app/data/development_triangle.json. Step two copies solution/develop_reserves_fixed.py
-over /app/workflow/develop_reserves.py and runs it against that triangle. The engine forms exact
-rational age-to-age ratios from eligible cells, trims the highest and lowest once five survive,
-averages the latest three, derives the tail from half the final observed development, chains the
-factors in increasing lag order, projects the paid chain-ladder ultimate, the expected-loss ultimate
-from earned premium and the maturity-weighted blend of the two, then admits, tiers, orders and caps
-the reserve queue. It writes exactly summary.json, line_development.json and reserve_queue.jsonl
-into --output-dir. Every governing value traces to its final entry in
-/app/incident/reserving_governance_log.md; report_spec.json supplies only the output contract.
-'''
-verification_explanation = '''
-The separate verifier (tests/Dockerfile builds an isolated image the agent cannot see) collects the
-agent's whole /app as the declared artifact and runs tests/test_outputs.py against it. Step one is
-graded directly: the rebuilt /app/data/development_triangle.json must equal the sealed expected
-triangle, carry only the declared cell fields and leave the movement extract and the calendar
-byte-identical -- then the shipped partial triangle and three wrong aggregations (movements posted
-by booking period, recoveries left out of paid, empty lags zero-filled instead of carried forward)
-are each asserted different from it, and the agent's own engine is re-run on all four and required
-to disagree with the sealed outputs, which is what makes the two steps provably dependent. Step two
-executes the agent's /app/workflow/develop_reserves.py as a subprocess under an unprivileged uid
-(setpriv 65534, scrubbed environment, hard timeout) over both the rebuilt triangle and a held-out
-alternate triangle, and diffs summary.json, line_development.json and reserve_queue.jsonl against
-sealed fixtures generated from the reference. It also checks schema, sort, tiering, admission and
-capacity-cap invariants, summary math, idempotency, the command-line defaults, and that the calendar
-and policy paths actually influence output. A dedicated test proves the committee dialect deviates
-from the textbook chain ladder by computing the all-year volume-weighted factor on a staged triangle
-and requiring the engine to disagree with it. The frozen snapshot /app/workflow/.develop_reserves.original
-is asserted present by hash and wrong by output. Confirmed locally in the real two-container flow:
-after solve.sh the verifier gives reward 1; a fresh environment gives 0, and so does an environment
-where the engine is repaired but the triangle is never rebuilt.
-'''
-relevant_experience = '''
-Experience rebuilding a cumulative loss-development triangle from an incremental claim movement
-extract under netting, late-reporting and de-duplication rules, and reconstructing a chain-ladder
-reserving convention from an authoritative but noisy committee log rather than a clean
-specification -- tracing incrementally revised rules to their final form, holding exact integer and
-rational arithmetic with per-stage rounding, and matching a byte-level output contract.
-'''
+difficulty_explanation = '''The graded book carries 175,000 claim movements across eight lines and forty accident periods, and the committee's claim-attribution figures need every movement bucketed into its cell and claim. Done in one pass a run finishes in about a second; rescanning the movement file for each cell is the cell count times the movement count and cannot meet the 120-second wall-clock budget the contract states. Restoring this valuation is the work of an actuarial reserving analyst closing a year-end loss development study, and it is a genuinely dependent chain rather than a single repair. The year-end rebuild of the cumulative development triangle was abandoned and its file cleared, so the first step is to aggregate /app/data/claim_movements.json into /app/data/development_triangle.json under the committee's final decision -- which movement types net into paid, that recoveries are already filed as negative amounts, that a blank accident period is taken from the claim's other movements rather than from the booking period, that a development lag with no movement carries the previous cumulative forward instead of reading zero, and the de-duplication and discard rules around it. Every projected ultimate is wrong if that aggregation is wrong, and a superseded draft that posts movements by booking period, drops recoveries and zero-fills empty lags is there to be traced past. Only then can the analyst reconstruct the development conventions themselves from a long, mostly routine committee log rather than a specification: ratio eligibility on the earlier cell, the trim-then-latest-three factor selection, the derived tail, the order-sensitive chaining of factors, the paid rather than incurred projection base, the expected-loss method on earned premium, the maturity-driven credibility blend, the differently floored reserve and incurred-but-not-reported figures, admission, tiering and the capacity cap applied after ordering all have to be traced to their final dated decision, with each rounding direction fixed independently. Development factors multiply forward, so an error at an early lag propagates into every ultimate. All amounts are integer minor units and the data is synthetic.'''
+solution_explanation = '''solution/solve.sh drives the two dependent steps inside the environment container. Step one runs solution/build_triangle.py, which implements the committee's final aggregation decision (#RSV-4180): keep one movement per movement_id by highest posted_seq then last filed, drop voided rows, resolve a blank accident period from the earliest accident period carried by another movement of the same claim reference and discard the row when the claim appears nowhere else, take the development lag from the booking period, net payments, allocated expense and the negatively filed salvage and subrogation recoveries into the paid figure, add case reserve movements only to the incurred figure, accumulate each cell as the running sum so an empty lag carries forward, and write the sorted triangle to /app/data/development_triangle.json. Step two copies solution/develop_reserves_fixed.py over /app/workflow/develop_reserves.py and runs it against that triangle. The engine forms exact rational age-to-age ratios from eligible cells, trims the highest and lowest once five survive, averages the latest three, derives the tail from half the final observed development, chains the factors in increasing lag order, projects the paid chain-ladder ultimate, the expected-loss ultimate from earned premium and the maturity-weighted blend of the two, then admits, tiers, orders and caps the reserve queue. It writes exactly summary.json, line_development.json and reserve_queue.jsonl into --output-dir. Every governing value traces to its final entry in /app/incident/reserving_governance_log.md; report_spec.json supplies only the output contract.'''
+verification_explanation = '''The separate verifier (tests/Dockerfile builds an isolated image the agent cannot see) collects the agent's whole /app as the declared artifact and runs tests/test_outputs.py against it. Step one is graded directly: the rebuilt /app/data/development_triangle.json must equal the sealed expected triangle, carry only the declared cell fields and leave the movement extract and the calendar byte-identical -- then the shipped partial triangle and three wrong aggregations (movements posted by booking period, recoveries left out of paid, empty lags zero-filled instead of carried forward) are each asserted different from it, and the agent's own engine is re-run on all four and required to disagree with the sealed outputs, which is what makes the two steps provably dependent. Step two executes the agent's /app/workflow/develop_reserves.py as a subprocess under an unprivileged uid (setpriv 65534, scrubbed environment, hard timeout) over both the rebuilt triangle and a held-out alternate triangle, and diffs summary.json, line_development.json and reserve_queue.jsonl against sealed fixtures generated from the reference. It also checks schema, sort, tiering, admission and capacity-cap invariants, summary math, idempotency, the command-line defaults, and that the calendar and policy paths actually influence output. A dedicated test proves the committee dialect deviates from the textbook chain ladder by computing the all-year volume-weighted factor on a staged triangle and requiring the engine to disagree with it. The frozen snapshot /app/workflow/.develop_reserves.original is asserted present by hash and wrong by output. Confirmed locally in the real two-container flow: after solve.sh the verifier gives reward 1; a fresh environment gives 0, and so does an environment where the engine is repaired but the triangle is never rebuilt.'''
+relevant_experience = '''Experience rebuilding a cumulative loss-development triangle from an incremental claim movement extract under netting, late-reporting and de-duplication rules, and reconstructing a chain-ladder reserving convention from an authoritative but noisy committee log rather than a clean specification -- tracing incrementally revised rules to their final form, holding exact integer and rational arithmetic with per-stage rounding, and matching a byte-level output contract.'''
 category = "Operations"
 subcategory = "Claims"
 tags = ["actuarial", "loss-development", "chain-ladder", "reserving", "claims-aggregation"]

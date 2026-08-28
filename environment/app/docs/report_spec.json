@@ -12,7 +12,15 @@
       "pandas",
       "numpy",
       "duckdb"
-    ]
+    ],
+    "prohibited_dynamic_loading": [
+      "importlib",
+      "__import__",
+      "eval",
+      "exec",
+      "compile"
+    ],
+    "prohibited_dynamic_loading_note": "the engine's imports have to be readable in its source, so the module machinery is out even though importlib is itself standard library"
   },
   "output_files": {
     "summary_json": "summary.json",
@@ -79,7 +87,8 @@
       "cumulative_paid_cents",
       "cumulative_incurred_cents",
       "movement_count"
-    ]
+    ],
+    "fields_note": "a cell carries these four fields and no others; the tests read the key set, not a subset"
   },
   "movements_source": {
     "path": "/app/data/claim_movements.json",

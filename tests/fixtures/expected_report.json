@@ -1,8 +1,8 @@
 {
   "alternate": {
-    "development_digest": "cde2d31e26b4e85f03fc02ed194a5c6010cb8adeb7f158bffb9ad1dcf85c0d36",
+    "development_digest": "983d3713221163e53d38d62ea19bb4095fd6f36cb0ffde942cdf8ccfafc60fee",
     "queue_count": 54,
-    "queue_digest": "54876f24134fc405b5976a8a95630bdc17a2b7b8f957fe20bee3b1637104a40b",
+    "queue_digest": "d02d3ff9ac866bec46778f7cd205e1d026ce627faff041be1cadf4c6faef8e64",
     "summary": {
       "cohort_count": 320,
       "largest_cdf_bp": 234688,
@@ -10,7 +10,7 @@
       "max_credibility_bp": 9300,
       "max_ibnr_cents": 614424979,
       "max_largest_claim_share_bp": 10000,
-      "max_reserve_cents": 5615993215,
+      "max_reserve_cents": 5614594683,
       "queued_cohort_count": 54,
       "schema_version": "reserve-triangle-v1",
       "tier_counts": {
@@ -18,11 +18,11 @@
         "review": 40,
         "watch": 1
       },
-      "total_ibnr_cents": 5104285523,
+      "total_ibnr_cents": 5104016182,
       "total_latest_incurred_cents": 3568160131900,
       "total_latest_paid_cents": 1778699910200,
-      "total_reserve_cents": 258075454759,
-      "total_ultimate_cents": 2036775364959,
+      "total_reserve_cents": 257059105143,
+      "total_ultimate_cents": 2035759015343,
       "triangle_cell_count": 6560,
       "triangle_movement_count": 158563,
       "valuation_period": "2024Q4"
@@ -38,7 +38,7 @@
   },
   "movements_digest": "3d13a7dec843ce370b95f5f3555286a2425ff339a10185473c0a72d5448b84d5",
   "primary": {
-    "development_digest": "292dbed110235464c915f9b5ae38e8132b270c2d3fba2a199c984209f0209cb4",
+    "development_digest": "8d33537d3bd1287283cc292ba3de4caf213300339d4b1e45429b3441b5a6fa8f",
     "queue_count": 54,
     "queue_digest": "6df3a4f29af12892a23b6a2bebb361c24450d63d02151f50beeac13359441483",
     "summary": {
@@ -56,11 +56,11 @@
         "review": 38,
         "watch": 1
       },
-      "total_ibnr_cents": 7447082243,
+      "total_ibnr_cents": 7442800632,
       "total_latest_incurred_cents": 3590934927900,
       "total_latest_paid_cents": 1784424922600,
-      "total_reserve_cents": 251051711478,
-      "total_ultimate_cents": 2035476634078,
+      "total_reserve_cents": 250472158579,
+      "total_ultimate_cents": 2034897081179,
       "triangle_cell_count": 6560,
       "triangle_movement_count": 158969,
       "valuation_period": "2024Q4"
